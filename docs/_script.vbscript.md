@@ -1,6 +1,6 @@
 ## VBScript Support
 
-## Hello World Example
+### Hello World Example
 
 ```lua
 require "Underscript"
@@ -8,7 +8,7 @@ require "Underscript"
 -- Prints "Hello World!"
 function say(s) _script.vbscript
  [[
- Underscript.WriteLn(s & "!")
+ UConsole.WriteLn(s & "!")
  ]]
 end
 

@@ -1,6 +1,8 @@
 # Underscript
 
-Underscript is a Lua extension library that allows you to **run a variety of scripting languages from within Lua scripts**. Underscript's scripted operations can be isolated or "connected" with the variables from the Lua state of the host. Currently JavaScript, Pascal, Perl, PHP, Python, Ruby & VBScript are supported.
+Underscript is a Lua extension library that allows you to **run a variety of scripting languages from within Lua scripts**. Underscript's scripted operations can be isolated or "connected" with the variables from the Lua state of the host. 
+
+Currently JavaScript, LuaJIT, Pascal, Perl, PHP, Python, Ruby, TCL and VBScript are supported.
 
 ```lua
 require "Underscript"
@@ -30,8 +32,8 @@ function echo(s) _script.php
 end
 ```
 
-All global and local Lua variables (string, number, boolean and nil) are
-automatically made accessible from within the code just like if they were part of the Lua script that is running it, as shown in the examples above. If you prefer, connected global or local variables can be disabled (see **/docs/options.md**)
+All local Lua variables (string, number, boolean and nil) are
+automatically made accessible from within the code just like if they were part of the Lua script that is running it, as shown in the examples above. If you prefer, connected variables can be disabled or enabled, including for global variables (see **/docs/options.md**)
 
 **Case Sensitiveness in Pascal and VBScript** - PascalScript and VBScript are case-insensitive. When using them avoid using Lua variables with the same name but different case.
 

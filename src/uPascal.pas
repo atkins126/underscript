@@ -16,8 +16,8 @@ uses
 {$ELSE}
   Classes, SysUtils, Forms,
 {$ENDIF}
-  lua, plua, LuaObject, uPSCompiler, uPSRuntime, CatStrings,
-  UndHelper_Obj, uPSComponent, UndImporter, UndConst;
+  lua, plua, LuaObject, uPSCompiler, uPSRuntime, CatStrings, UndConsole,
+  UndHelper_Obj, uPSComponent, UndImporter, UndConst, CatLogger;
 
 type
    TUndPascal = class
@@ -26,7 +26,6 @@ type
     Output:string;
     ErrorMsg:string;
     Success:boolean;
-    RedirectIO:boolean;
     constructor Create(L : PLua_State);
     destructor Destroy; override;
     procedure CompImport(Sender: TObject; x: TIFPSPascalcompiler);
@@ -35,22 +34,12 @@ type
     procedure Execute(Sender: TPSScript);
     procedure MyWriteln(s: string);
     procedure MyWrite(s: string);
+    procedure MyDebug(s: string);
    end;
 
-type
-  TUndPascalWrapper = class(TLuaObject)
-  private
-    Pas:TUndPascal;
-    constructor Create(LuaState : PLua_State; AParent : TLuaObject = nil); overload;
-    function  GetPropValue(propName : String): Variant; override;
-    function  SetPropValue(PropName : String; const AValue: Variant) : Boolean; override;
-  public
-    destructor Destroy; override;
-  published
-  end;
-
-procedure RegisterUndPascalWrapper(L : Plua_State);
 function PascalClassic_Run(L: plua_State):integer; cdecl;
+function PascalFunction_Run(L: plua_State):integer; cdecl;
+function PascalFunctionShort_Run(L: plua_State):integer; cdecl;
 
 implementation
 
@@ -68,82 +57,84 @@ uses uPSR_std, uPSC_std,
   UndHelper_REM,
   uPSC_dll, uPSR_dll;
 
-{function method_evalstring(l : PLua_State) : Integer; cdecl;
-var ht : TUndPascalWrapper; r:string;
-begin
-  ht:=TUndPascalWrapper(LuaToTLuaObject(l, 1));
-  r:= ht.obj.EvalStringAsStr(pchar(lua_tostring(L,2)));
-  lua_pushstring(L, pchar(r));
-  result := 1;
-end;  }
+type
+  TPascalMode = (pmFunction, pmFunctionShort, pmProgram);
 
-function PascalClassic_Run(L: plua_State):integer; cdecl; // Main function for execution
-var obj:TUndPascal; r:variant; script:string; importer:TUndImporter;
-  procedure OutputMessages;
+// Main function for execution of Pascal script
+function PascalREM_Run(L: plua_State; mode:TPascalMode):integer; cdecl;
+var
+  r: TUndScriptResult;
+  obj:TUndPascal;
+  rv:variant;
+  script:string;
+  compscript:TUndCompiledScript;
+  importer:TUndImporter;
+  sw: TCatStopWatch;
+  procedure HandleError;
   var i: Longint;
   begin
-    for i := 0 to obj.PSScript.CompilerMessageCount - 1 do
-    Und_LogError(L,i,'Pascal: '+ obj.PSScript.CompilerErrorToStr(i));
+    r.success := false;
+    r.errormessage := emptystr;
+    for i := 0 to obj.PSScript.CompilerMessageCount - 1 do begin
+      uConsoleErrorLn(L,i,'Pascal: '+ obj.PSScript.CompilerErrorToStr(i));
+      r.errormessage := r.errormessage+crlf+obj.PSScript.CompilerErrorToStr(i);
+    end;
   end;
 begin
+  if plua_validateargs(L, result, [LUA_TSTRING]).OK = false then
+    Exit;
+  sw := CatStopWatchNew;
+  r.success := true;
   obj := TUndPascal.Create(L);
   importer:=TUndImporter.create(L);
-  //importer.EnableDebug:=true;
-  importer.FuncReadFormat:='%k = '+rudLibName+'.GetL("%k");'+crlf;
-  importer.FuncWriteFormat:=crlf+rudLibName+'.SetL("%k",%k);';
+  undhelper.luastate := L;
+  importer.EnableDebug:= false;
   script:=lua_tostring(L,1);
-  //script:=importer.GetScript(script); 
+  if mode = pmFunctionShort then begin
+   compscript:=importer.GetScript(L, script, langint_PascalREM);
+   script := compscript.constscript+crlf+'begin'+crlf;
+   script := script+compscript.initscript+compscript.originalscript;
+   script := script+crlf+compscript.endscript+crlf+'end.';
+  end;
+  if mode = pmFunction then begin
+   compscript:=importer.GetScript(L, script, langint_PascalREM);
+   script := compscript.constscript;
+   script := script+crlf+'procedure __import; begin'+crlf+compscript.initscript+crlf+'end;';
+   script := script+crlf+'procedure __run;'+crlf;
+   script := script+compscript.originalscript;
+   script := script+crlf+'begin __import;__run;'+crlf+compscript.endscript+crlf+'end.';
+  end;
+  //writeln(script);
   obj.PSScript.Script.Text:=script;
   if obj.PSScript.Compile then begin
      obj.success:= obj.PSScript.Execute;
-  end else obj.Success:=false;
-  if obj.success=false then OutputMessages;//writeln(obj.errormsg);
-  //OutputMessages;
+     //writeln(booltoyn(obj.Success));
+  end else begin
+     obj.Success:=false;
+  end;
+
+  if obj.success=false then
+    HandleError;
+    //writeln(obj.errormsg);
   obj.free;
   importer.free;
-  //plua_pushvariant(L, r);
+  Und_PushScriptResult(L, r, sw);
   result:=1;
 end;
 
-function method_run(l : PLua_State) : Integer; cdecl;
-var o : TUndPascalWrapper; s,data:string;
-  procedure OutputMessages;
-  var l: Longint;
-  begin
-    for l := 0 to o.pas.PSScript.CompilerMessageCount - 1 do
-    o.pas.errormsg:=o.pas.errormsg+('Compiler: '+ o.pas.PSScript.CompilerErrorToStr(l));
-  end;
+function PascalClassic_Run(L: plua_State):integer; cdecl;
 begin
-  o:=TUndPascalWrapper(LuaToTLuaObject(l, 1));
-  s:=pchar(lua_tostring(L,2));
-  o.pas.Output:=emptystr;  o.pas.ErrorMsg:=emptystr;
-  o.pas.PSScript.Script.Text:=s;
-  if o.pas.PSScript.Compile then begin
-   o.pas.success:= o.pas.PSScript.Execute;
-  end else o.pas.Success:=false; // else writeln('Failed to compile.');
-  OutputMessages;
-  result := 1;
+  result := PascalREM_Run(L, pmProgram);
 end;
 
-procedure RegisterUndPascalWrapper(L: Plua_State);
-const cObjectName='RPascal';
- procedure Register_Methods(L : Plua_State; classTable : Integer);
- begin
-  //RegisterMethod(L,'eval', @method_evalstring, classTable);
-  RegisterMethod(L,'run', @method_run, classTable);
- end;
- function GetLuaObject(L : PLua_State; AParent : TLuaObject=nil):TLuaObject;
- begin
-   result := TUndPascalWrapper.Create(L, AParent);
- end;
- function new_Object(L : PLua_State) : Integer; cdecl;
- var p : TLuaObjectNewCallback;
- begin
-   p := @GetLuaObject;
-   result := new_LuaObject(L,cObjectName, p);
- end;
+function PascalFunction_Run(L: plua_State):integer; cdecl;
 begin
- RegisterTLuaObject(L,cObjectName,@new_Object, @Register_Methods);
+  result := PascalREM_Run(L, pmFunction);
+end;
+
+function PascalFunctionShort_Run(L: plua_State):integer; cdecl;
+begin
+  result := PascalREM_Run(L, pmFunctionShort);
 end;
 
 procedure TUndPascal.CompImport(Sender: TObject; x: TIFPSPascalcompiler);
@@ -182,20 +173,24 @@ end;
 
 procedure TUndPascal.MyWriteln(s: string);
 begin
-  if redirectio then begin
-   if output=emptystr then output:=s else output:=crlf+output+s;
-  end else Undhelper.writeln(s);
+  Undhelper.writeln(s);
 end;
 
 procedure TUndPascal.MyWrite(s: string);
 begin
-  if redirectio then output:=output+s else  Undhelper.write(s);
+  Undhelper.write(s);
+end;
+
+procedure TUndPascal.MyDebug(s: string);
+begin
+  Undhelper.Debug(s);
 end;
 
 procedure TUndPascal.Compile(Sender: TPSScript);
 begin
   //Sender.AddFunction(@MyReadln, 'function Readln(question: string): string;');
   Sender.Comp.OnExternalProc := @DllExternalProc;
+  Sender.AddMethod(Self,@TUndPascal.MyDebug, 'procedure Debug(s: string);');
   Sender.AddMethod(Self,@TUndPascal.MyWriteln, 'procedure Writeln(s: string);');
   Sender.AddMethod(Self,@TUndPascal.MyWrite, 'procedure Write(s: string);');
   Sender.AddRegisteredVariable('Application', 'TApplication');
@@ -218,9 +213,8 @@ begin
   PSScript.OnExecImport:=ExecImport;
   PSScript.OnCompile:=Compile;
   PSScript.OnExecute:=Execute;
-  //PSScript.CompilerOptions:=PSScript.CompilerOptions-[icAllowNoBegin];
-  //PSScript.CompilerOptions:=PSScript.CompilerOptions-[icAllowNoEnd];
-  RedirectIO:=false;
+  //PSScript.CompilerOptions:=PSScript.CompilerOptions+[icAllowNoBegin];
+  //PSScript.CompilerOptions:=PSScript.CompilerOptions+[icAllowNoEnd];
   UndHelper.LuaState:=L;
   State:=L;
 end;
@@ -228,36 +222,6 @@ end;
 destructor TUndPascal.Destroy;
 begin
   PSScript.Free;
-  inherited Destroy;
-end;
-
-// Lua Object ******************************************************************
-constructor TUndPascalWrapper.Create(LuaState: PLua_State; AParent: TLuaObject);
-begin
-  inherited Create(LuaState, AParent);
-  pas:=TUndPascal.Create(LuaState);
-  pas.RedirectIO:=true;
-end;
-
-function TUndPascalWrapper.GetPropValue(propName: String): Variant;
-begin
-  if CompareText(propName, 'ErrorMsg') = 0 then result := pas.ErrorMsg else
-  if CompareText(propName, 'Output') = 0 then result := pas.Output else
-  if CompareText(propName, 'Success') = 0 then result := pas.Success else
-  Result:=inherited GetPropValue(propName);
-end;
-
-function TUndPascalWrapper.SetPropValue(PropName: String; const AValue: Variant
-  ): Boolean;
-begin
-  result := true;
-  //if CompareText(propName, 'Expression') = 0 then obj.Expression.text := AValue else
-  Result:=inherited SetPropValue(propName, AValue);
-end;
-
-destructor TUndPascalWrapper.Destroy;
-begin
-  pas.free;
   inherited Destroy;
 end;
 

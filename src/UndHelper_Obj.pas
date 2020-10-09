@@ -9,21 +9,32 @@ unit UndHelper_Obj;
 interface
 
 uses
-  Lua, pLua, Variants, UndConst;
+  Lua, pLua, Variants, UndConst, UndConsole;
 
 type
+{$METHODINFO ON}
   TUndHelper = class
   public
     LuaState: PLua_State;
     constructor Create;
+    procedure Debug(s: String);
     procedure Write(s: String);
     procedure WriteLn(s: String);
     procedure Run(Script: String);
     function GetG(valName: String): Variant;
     procedure SetG(valName: String; const AValue: Variant);
+    // getters local
     function GetL(valName: String): Variant;
+    function GetLBoolean(valName: String): boolean;
+    function GetLString(valName: String): String;
+    function GetLInteger(valName: String): integer;
+    // setters local
     procedure SetL(valName: String; const AValue: Variant);
+    procedure SetLBoolean(valName: String; AValue: Boolean);
+    procedure SetLString(valName: String; AValue: String);
+    procedure SetLInteger(valName: String; AValue: Integer);
   end;
+{$METHODINFO OFF}
 
 var
   UndHelper: TUndHelper;
@@ -46,6 +57,21 @@ begin
   pLua_SetLocal(LuaState, valName, AValue);
 end;
 
+procedure TUndHelper.SetLString(valName: String; AValue: String);
+begin
+  pLua_SetLocal(LuaState, valName, AValue);
+end;
+
+procedure TUndHelper.SetLInteger(valName: String; AValue: Integer);
+begin
+  pLua_SetLocal(LuaState, valName, AValue);
+end;
+
+procedure TUndHelper.SetLBoolean(valName: String; AValue: Boolean);
+begin
+  pLua_SetLocal(LuaState, valName, AValue);
+end;
+
 function TUndHelper.GetL(valName: String): Variant;
 var
   v: Variant;
@@ -54,8 +80,23 @@ begin
     v := pLua_GetLocal(LuaState, valName);
   except
   end;
-  // writeln('v is:'+v);
+  //writeln('v is:'+v);
   result := v;
+end;
+
+function TUndHelper.GetLString(valName: String): string;
+begin
+  result := pLua_GetLocal(LuaState, valName);
+end;
+
+function TUndHelper.GetLBoolean(valName: String): boolean;
+begin
+  result := pLua_GetLocal(LuaState, valName);
+end;
+
+function TUndHelper.GetLInteger(valName: String): integer;
+begin
+  result := pLua_GetLocal(LuaState, valName);
 end;
 
 procedure TUndHelper.SetG(valName: String; const AValue: Variant);
@@ -80,14 +121,19 @@ begin
   result := v;
 end;
 
+procedure TUndHelper.Debug(s: String);
+begin
+  uConsoleDebug(LuaState, s);
+end;
+
 procedure TUndHelper.Write(s: String);
 begin
-  Und_CustomWrite(LuaState, s, rudCustomFunc_Write);
+  uConsoleWrite(LuaState, s);
 end;
 
 procedure TUndHelper.writeln(s: String);
 begin
-  Und_CustomWriteLn(LuaState, s, rudCustomFunc_WriteLn);
+  uConsoleWriteLn(LuaState, s);
 end;
 
 initialization

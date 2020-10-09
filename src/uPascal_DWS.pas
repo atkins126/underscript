@@ -1,4 +1,4 @@
-unit uDWS;
+unit uPascal_DWS;
 {
   UnderScript Delphi Web Script Wrapper
   Copyright (c) 2013-2020 Felipe Daragon
@@ -15,7 +15,7 @@ uses
 {$ELSE}
   Classes, SysUtils, Forms,
 {$ENDIF}
-  Lua, pLua, LuaObject, CatStrings, UndHelper_Obj,
+  Lua, pLua, LuaObject, CatStrings, UndHelper_Obj, UndConsole, CatLogger,
   Dws2Comp, dws2Exprs, dws2Compiler, dws2htmlfilter, UndImporter, UndConst;
 
 type
@@ -28,6 +28,7 @@ type
     FPrg: TProgram;
     constructor Create(L: Plua_State);
     destructor Destroy; override;
+    procedure Debug(Info: TProgramInfo);
     procedure Write(Info: TProgramInfo);
     procedure WriteLn(Info: TProgramInfo);
     procedure GetLocal(Info: TProgramInfo);
@@ -36,52 +37,41 @@ type
     procedure SetGlobal(Info: TProgramInfo);
   end;
 
-type
-  TUndDWSWrapper = class(TLuaObject)
-  private
-    Pas: TUndDWS;
-    constructor Create(LuaState: Plua_State;
-      AParent: TLuaObject = nil); overload;
-    function GetPropValue(propName: String): Variant; override;
-    function SetPropValue(propName: String; const AValue: Variant)
-      : Boolean; override;
-  public
-    destructor Destroy; override;
-  published
-  end;
-
-procedure RegisterUndPascalWrapper(L: Plua_State);
 function PascalScript_Run(L: Plua_State): integer; cdecl;
 function PascalWebScript_Run(L: Plua_State): integer; cdecl;
-function DWSScript_Run(L: Plua_State; isfilter: Boolean): integer; cdecl;
+function DWSScript_Run(L: Plua_State; const isfilter: Boolean): integer; cdecl;
 
 implementation
 
-function DWSScript_Run(L: Plua_State; isfilter: Boolean): integer; cdecl;
+function DWSScript_Run(L: Plua_State; const isfilter: Boolean): integer; cdecl;
 var
+  r: TUndScriptResult;
   obj: TUndDWS;
-  r: Variant;
   script, result_str: string;
   importer: TUndImporter;
   i: integer;
+  langdef: TUndLanguageInternal;
+  sw: TCatStopWatch;
 begin
+  if plua_validateargs(L, result, [LUA_TSTRING]).OK = false then
+    Exit;
+  sw := CatStopWatchNew;
+  r.success := true;
   obj := TUndDWS.Create(L);
   importer := TUndImporter.Create(L);
   importer.EnableDebug := false;
-  importer.FuncReadFormat := 'var %k:%t;%k := ' + rudLibName + '.GetL(''%k'');';
-  importer.FuncWriteFormat := crlf + rudLibName + '.SetL(''%k'',%k);';
+  langdef := langint_PascalDWS;
   if isfilter then
-  begin // import not working... see later why
+  begin // TODO: check if import is working in filter mode
     obj.dws1.Config.Filter := obj.dwsfilter1;
-    importer.FuncReadFormat := '<% ' + importer.FuncReadFormat + ' %>';
-    importer.FuncWriteFormat := '<%' + importer.FuncWriteFormat + '%>';
+    langdef.FuncReadFormat := '<% ' + langdef.FuncReadFormat + ' %>';
+    langdef.FuncWriteFormat := '<%' + langdef.FuncWriteFormat + '%>';
   end;
   script := pchar(lua_tostring(L, 1));
   try
-    script := importer.GetScript(L, script);
+    script := importer.GetScript(L, script, langdef).completescript;
   except
   end; // eats any exception
-  // Undhelper.WriteLn('script:'+script); //debug
 
   try
     obj.FPrg.Free;
@@ -92,10 +82,9 @@ begin
   obj.FPrg := obj.dws1.Compile(script);
   for i := 0 to obj.FPrg.Msgs.Count - 1 do
   begin
-    if rudCustomFunc_LogError <> emptystr then
-      Und_LogError(L, -1, obj.FPrg.Msgs[i].AsInfo)
-    else
-      UndHelper.writeln(obj.FPrg.Msgs[i].AsInfo);
+    r.success := false;
+    r.errormessage := obj.FPrg.Msgs.ToString;
+    uConsoleErrorLn(L, -1, obj.FPrg.Msgs[i].AsInfo)
   end;
   obj.FPrg.Debugger := nil;
   obj.FPrg.execute;
@@ -108,7 +97,7 @@ begin
 
   obj.Free;
   importer.Free;
-  // plua_pushvariant(L, r);
+  Und_PushScriptResult(L, r, sw);
   Result := 1;
 end;
 
@@ -126,25 +115,10 @@ begin
   Result := 1;
 end;
 
-{ function method_run(l : PLua_State) : Integer; cdecl;
-  var o : TUndDWSWrapper; s,data:string;
-  procedure OutputMessages;
-  var l: Longint;
-  begin
-  for l := 0 to o.pas.PSScript.CompilerMessageCount - 1 do
-  o.pas.errormsg:=o.pas.errormsg+('Compiler: '+ o.pas.PSScript.CompilerErrorToStr(l));
-  end;
-  begin
-  o:=TUndDWSWrapper(LuaToTLuaObject(l, 1));
-  s:=pchar(lua_tostring(L,2));
-  o.pas.Output:=emptystr;  o.pas.ErrorMsg:=emptystr;
-  o.pas.PSScript.Script.Text:=s;
-  if o.pas.PSScript.Compile then begin
-  o.pas.success:= o.pas.PSScript.Execute;
-  end else o.pas.Success:=false; // else writeln('Failed to compile.');
-  OutputMessages;
-  result := 1;
-  end; }
+procedure TUndDWS.Debug(Info: TProgramInfo);
+begin
+  UndHelper.debug(Info['s']);
+end;
 
 procedure TUndDWS.writeln(Info: TProgramInfo);
 begin
@@ -194,18 +168,24 @@ end;
 constructor TUndDWS.Create(L: Plua_State);
   procedure Add_CustomFunctions;
   var
+    func_debug: Tdws2Function;
     func_writeln: Tdws2Function;
-  var
     func_write: Tdws2Function;
-  var
     func_getl: Tdws2Function;
-  var
     func_getg: Tdws2Function;
-  var
     func_setl: Tdws2Function;
-  var
     func_setg: Tdws2Function;
   begin
+    // Debug
+    func_debug := Tdws2Function.Create(dws2Unit1.Functions);
+    func_debug.Name := 'Debug';
+    func_debug.ResultType := emptystr;
+    func_debug.OnEval := Debug;
+    with tdws2parameter(func_debug.Parameters.Add) do
+    begin
+      name := 's';
+      datatype := 'string';
+    end;
     // Write
     func_write := Tdws2Function.Create(dws2Unit1.Functions);
     func_write.Name := 'Write';
@@ -300,58 +280,6 @@ begin
   dwsfilter1.Free;
   dwshtmlunit1.Free;
   dws2Unit1.Free;
-  inherited Destroy;
-end;
-
-constructor TUndDWSWrapper.Create(LuaState: Plua_State; AParent: TLuaObject);
-begin
-  inherited Create(LuaState, AParent);
-  Pas := TUndDWS.Create(LuaState);
-end;
-
-function TUndDWSWrapper.GetPropValue(propName: String): Variant;
-begin
-  { if CompareText(propName, 'ErrorMsg') = 0 then result := pas.ErrorMsg else
-    if CompareText(propName, 'Output') = 0 then result := pas.Output else
-    if CompareText(propName, 'Success') = 0 then result := pas.Success else }
-  Result := inherited GetPropValue(propName);
-end;
-
-function TUndDWSWrapper.SetPropValue(propName: String;
-  const AValue: Variant): Boolean;
-begin
-  Result := true;
-  // if CompareText(propName, 'Expression') = 0 then obj.Expression.text := AValue else
-  Result := inherited SetPropValue(propName, AValue);
-end;
-
-procedure RegisterUndPascalWrapper(L: Plua_State);
-const
-  cObjectName = 'RPascalScript';
-  procedure Register_Methods(L: Plua_State; classTable: integer);
-  begin
-    // RegisterMethod(L,'eval', @method_evalstring, classTable);
-    // RegisterMethod(L,'run', @method_run, classTable);
-  end;
-  function GetLuaObject(L: Plua_State; AParent: TLuaObject = nil): TLuaObject;
-  begin
-    Result := TUndDWSWrapper.Create(L, AParent);
-  end;
-  function new_Object(L: Plua_State): integer; cdecl;
-  var
-    p: TLuaObjectNewCallback;
-  begin
-    p := @GetLuaObject;
-    Result := new_LuaObject(L, cObjectName, p);
-  end;
-
-begin
-  RegisterTLuaObject(L, cObjectName, @new_Object, @Register_Methods);
-end;
-
-destructor TUndDWSWrapper.Destroy;
-begin
-  Pas.Free;
   inherited Destroy;
 end;
 

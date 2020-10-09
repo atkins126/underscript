@@ -1,6 +1,61 @@
-## JavaScript (JScript) Support
+## JavaScript Support
 
-### Function Example
+You can run JS code through the following methods:
+
+* _script.**javascript** - default JS engine (QuickJS engine)
+* _script.**jscript** - MS JavaScript engine
+* _script.js.**core** - Apple's JavaScriptCore engine
+* _script.js.**node** or **nodestrict** - Node.JS
+* _script.js.**quick** - QuickJS engine
+* _script.js.**spider** - SpiderMonkey engine
+* _script.js.**v8** - Pure V8 engine
+
+### Hello World (Using NodeJS)
+
+```lua
+require "Underscript"
+
+-- Prints "Hello World!" in uppercase
+function say(s) _script.js.node
+ [[
+ console.log(s.toUpperCase()+'!');
+ ]]
+end
+
+say('Hello World')
+```
+
+### Hello World (Using pure V8 engine)
+
+```lua
+require "Underscript"
+
+-- Prints "Hello World!" in uppercase
+function say(s) _script.js.v8
+ [[
+ print(s.toUpperCase()+'!');
+ ]]
+end
+
+say('Hello World')
+```
+
+### Hello World (Using MS JScript)
+
+```lua
+require "Underscript"
+
+-- Prints "Hello World!" in uppercase
+function say(s) _script.jscript
+ [[
+ UConsole.WriteLn(s.toUpperCase()+'!');
+ ]]
+end
+
+say('Hello World')
+```
+
+### Function Example (Using MS JScript)
 
 ```lua
 require "Underscript"
@@ -49,17 +104,3 @@ function encode64(s) _script.jscript
 end
 ```
 
-### Hello World
-
-```lua
-require "Underscript"
-
--- Prints "Hello World!" in uppercase
-function say(s) _script.jscript
- [[
- Underscript.WriteLn(s.toUpperCase()+'!');
- ]]
-end
-
-say('Hello World')
-```

@@ -56,18 +56,24 @@ end;
 (*----------------------------------------------------------------------------*)
 procedure SIRegister_TUndHelper(CL: TPSPascalCompiler);
 begin
-  //with RegClassS(CL,'TOBJECT', 'TUndHelper') do
   with CL.AddClassN(CL.FindClass('TOBJECT'),'TUndHelper') do
   begin
     RegisterProperty('LuaState', 'PLua_State', iptrw);
     RegisterMethod('Constructor Create');
+    RegisterMethod('Procedure Debug( s : String)');
     RegisterMethod('Procedure Write( s : String)');
     RegisterMethod('Procedure WriteLn( s : String)');
     RegisterMethod('Procedure Run( s : String)');
     RegisterMethod('Function GetG( valName : String) : Variant');
     RegisterMethod('Procedure SetG( valName : String; const AValue : Variant)');
     RegisterMethod('Function GetL( valName : String) : Variant');
+    RegisterMethod('Function GetLString( valName : String) : String');
+    RegisterMethod('Function GetLInteger( valName : String) : Integer');
+    RegisterMethod('Function GetLBoolean( valName : String) : Boolean');
     RegisterMethod('Procedure SetL( valName : String; const AValue : Variant)');
+    RegisterMethod('Procedure SetLString( valName : String; const AValue : String)');
+    RegisterMethod('Procedure SetLInteger( valName : String; const AValue : Integer)');
+    RegisterMethod('Procedure SetLBoolean( valName : String; const AValue : Boolean)');
   end;
 end;
 
@@ -93,11 +99,18 @@ begin
   begin
     RegisterPropertyHelper(@TUndHelperLuaState_R,@TUndHelperLuaState_W,'LuaState');
     RegisterConstructor(@TUndHelper.Create, 'Create');
+    RegisterMethod(@TUndHelper.Debug, 'Debug');
     RegisterMethod(@TUndHelper.Write, 'Write');
     RegisterMethod(@TUndHelper.WriteLn, 'WriteLn');
     RegisterMethod(@TUndHelper.Run, 'Run');
     RegisterMethod(@TUndHelper.GetL, 'GetL');
+    RegisterMethod(@TUndHelper.GetLString, 'GetLString');
+    RegisterMethod(@TUndHelper.GetLInteger, 'GetLInteger');
+    RegisterMethod(@TUndHelper.GetLBoolean, 'GetLBoolean');
     RegisterMethod(@TUndHelper.SetL, 'SetL');
+    RegisterMethod(@TUndHelper.SetLString, 'SetLString');
+    RegisterMethod(@TUndHelper.SetLInteger, 'SetLInteger');
+    RegisterMethod(@TUndHelper.SetLBoolean, 'SetLBoolean');
     RegisterMethod(@TUndHelper.GetG, 'GetG');
     RegisterMethod(@TUndHelper.SetG, 'SetG');
   end;
