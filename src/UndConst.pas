@@ -33,7 +33,8 @@ var
   rudImportVariables: boolean = true;
   rudImportGlobals: boolean = false;
   rudImportLocals: boolean = true;
-  rudRedirectIO: boolean = false;
+  rudRedirectIO: boolean = true;
+  rudHandleErrors: boolean = true;
 
 type
   TUndScriptResult = record
@@ -53,7 +54,7 @@ type
 
 type
   TUndStringEncodeFormat = (usfBase64, usfHex);
-  TUndOptions = (uoTimeout, uoNoNilImport);
+  TUndOptions = (uoTimeout, uoNoNilImport, uoShortTypeName);
   TUndOptionSet = set of TUndOptions;
 
 type
@@ -236,7 +237,7 @@ const
 
 const
  langdef_TIScript: TUndLanguageExternal = (
-   Command: '%u\tiscript\tiscript.exe';
+   Command: '%u\jspp\tiscript.exe';
    FileExt: '.tis';
    StringFormat: '"%s"';
    VarReadFormat: '%k';
@@ -262,6 +263,50 @@ const
    FormatScript: '%s';
    NilKeyword: '""';
    StringEncodeFormat: usfHex;
+ );
+
+const
+ langdef_TypeScript_Deno: TUndLanguageExternal = (
+   Command: '%u\jspp\deno.exe';
+   Params: 'run %f';
+   FileExt: '.ts';
+   StringFormat: '"%s"';
+   VarReadFormat: '%k';
+   FuncReadFormat: 'var %k = %v;';
+   FuncWriteFormat: ';console.log("\n%pt=%t,n=%k,v="+%g);';
+   StringEncoder: 'btoa(%s)';
+   StringDecoder: 'atob(%s)';
+   FormatScript: '%s';
+   NilKeyword: 'null';
+ );
+
+const
+ langdef_JSPP_Onux: TUndLanguageExternal = (
+   Command: '%u\jspp\js++.exe';
+   Params: '-e %f';
+   FileExt: '.jspp';
+   StringFormat: '"%s"';
+   VarReadFormat: '%k';
+   FuncReadFormat: 'var %k = %v;';
+   FuncWriteFormat: ';Console.log("\n%pt=%t,n=%k,v="+%g);';
+   StringEncoder: 'Base64.encode(%s)';
+   StringDecoder: 'Base64.decode(%s)';
+   FormatScript: 'import System;import System.Encoding; %s';
+   NilKeyword: 'null';
+ );
+
+const
+ langdef_CSharp: TUndLanguageExternal = (
+   Command: '%u32\scriptcs\scriptcs.exe';
+   FileExt: '.cs';
+   StringFormat: '"%s"';
+   VarReadFormat: '%k';
+   FuncReadFormat: '%t %k = %v;';
+   FuncWriteFormat: ';Console.WriteLine("\n%pt=%t,n=%k,v="+%g);';
+   StringEncoder: 'Convert.ToBase64String(Encoding.UTF8.GetBytes(%s))';
+   StringDecoder: 'Encoding.UTF8.GetString(Convert.FromBase64String(%s))';
+   NilKeyword: 'null';
+   Options: [uoShortTypeName];
  );
 
 const
@@ -335,11 +380,19 @@ const
    FuncWriteFormat : crlf + '%l.SetL%c("%k",%k);';
    Options: [uoNoNilImport];
  );
+const
+ langint_V8:TUndLanguageInternal = (
+   FuncReadFormat : '%k = %l.GetL%c("%k");';
+   FuncWriteFormat : crlf + '%l.SetL%c("%k",%k);';
+   Options: [uoNoNilImport];
+ );
 
 procedure uConsoleWriteError(line: integer; msg: String);
 procedure SetCustomModuleName(name:string);
 procedure ReadScriptSettings(L: Plua_State);
 function RegisterScriptEngine(L: Plua_State; const LanguageTable, EngineName:string;
+  Func:lua_CFunction):integer; cdecl;
+function RegisterCrossRequire(L: Plua_State; const LanguageName:string;
   Func:lua_CFunction):integer; cdecl;
 
 
@@ -365,6 +418,7 @@ begin
   rudImportGlobals := plua_GetFieldValueBool(L, idx, 'useglobals', rudImportGlobals);
   rudImportLocals := plua_GetFieldValueBool(L, idx, 'uselocals', rudImportLocals);
   rudRedirectIO := plua_GetFieldValueBool(L, idx, 'redirectio', rudRedirectIO);
+  rudHandleErrors := plua_GetFieldValueBool(L, idx, 'handleerrors', rudHandleErrors);
 end;
 
 function RegisterScriptEngine(L: Plua_State; const LanguageTable, EngineName:string;
@@ -385,6 +439,25 @@ begin
    lua_pushcfunction(L, Func);
    lua_rawset(L, idx);
   end;
+end;
+
+function RegisterCrossRequire(L: Plua_State; const LanguageName:string;
+  Func:lua_CFunction):integer; cdecl;
+var
+  idx:integer;
+begin
+  result := 0;
+  lua_getglobal(L, 'tostring');
+  lua_pushstring(L, 'requirex');
+  lua_rawget(L, LUA_GLOBALSINDEX);
+  idx := lua_gettop(L);
+  if lua_istable(L, lua_gettop(L)) then begin
+   plua_setfieldvalueCF(L, LanguageName, func);
+   //lua_pushstring(L, EngineName);
+   //lua_pushcfunction(L, Func);
+   //lua_rawset(L, idx);
+  end;
+
 end;
 
 procedure SetCustomModuleName(name:string);

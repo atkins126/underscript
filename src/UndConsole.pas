@@ -9,8 +9,16 @@ unit UndConsole;
 interface
 
 uses
-  SysUtils, Lua, pLua, pLuaTable, CatStrings, CatUtils, UndConst, CatLogger;
+  SysUtils, Lua, pLua, pLuaTable, CatStrings, CatUtils, UndConst, CatFiles,
+  CatLogger;
 
+type
+  TCrossModuleCheckResult = record
+    Exists:boolean;
+    Script:string;
+  end;
+
+function uConsoleCrossModuleExists(L: plua_State; const module, ext:string):TCrossModuleCheckResult;
 procedure uConsoleDebug(L: plua_State; s: String);
 procedure uConsoleErrorLn(L: plua_State; line: integer; msg: String);
 procedure uConsoleWrite(L: plua_State; s: String);
@@ -47,8 +55,26 @@ begin
   if rudRedirectIO = true then begin
     if plua_tablefunctionexists(L, cUndConsoleLibName, cFuncName) then
       plua_tablecallfunction(L, cUndConsoleLibName, cFuncName, [line, msg]);
+  end;
+  // else begin
+  //  uConsoleWriteError(line, msg);
+  // end;
+  if rudHandleErrors = true then
+    luaL_error(L, '_script:('+inttostr(line)+'): '+msg);
+end;
+
+function uConsoleCrossModuleExists(L: plua_State; const module, ext:string):
+  TCrossModuleCheckResult;
+var fn:string;
+begin
+  result.Script := emptystr;
+  fn := extractfilepath(paramstr(0))+'\Lib\crosslang\'+module+'.'+ext;
+  result.Exists := fileexists(fn);
+  if (result.Exists = true) then begin
+    result.Script := GetFileToStr(fn);
   end else begin
-    uConsoleWriteError(line, msg);
+    if rudHandleErrors = true then
+      luaL_error(L, 'cross-language module '''+module+''' not found.');
   end;
 end;
 

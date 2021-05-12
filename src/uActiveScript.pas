@@ -14,6 +14,9 @@ uses
 const
   cDefaultLanguage: string = 'JavaScript';
 
+var
+  USEOLDASPARSER: boolean = false;
+
 type
   TActiveLanguage = (LuaScript, PerlScript, JavaScript, VBScript);
 
@@ -23,6 +26,18 @@ function VBScript_Run(L: plua_State): integer; cdecl;
 function ActiveScript_Run(L: plua_State): integer; cdecl;
 
 implementation
+
+var
+  ASLOADED: boolean = false;
+
+procedure LoadActiveScriptSupport;
+begin
+  if ASLOADED = true then
+    exit;
+  ASLOADED := true;
+  if fileexists(extractfilepath(paramstr(0))+'\Carbon.conf') = true then
+    USEOLDASPARSER := true;
+end;
 
 function PrepareLanguage(const Lang: string):TUndLanguageInternal;
 begin
@@ -69,6 +84,7 @@ var
 begin
   if plua_validateargs(L, result, [LUA_TSTRING]).OK = false then
     Exit;
+  LoadActiveScriptSupport;
   sw := CatStopWatchNew;
   r.success := true;
   CoInitialize(nil);
@@ -84,13 +100,14 @@ begin
   uconsole.LuaState := L; // IMPORTANT!
   UndHelper.LuaState := L; // IMPORTANT!
   obj := TScarlettActiveScript.create(UndHelper);
-  obj.asw.scriptlanguage := cDefaultLanguage; // javascript
+  obj.scriptlanguage := cDefaultLanguage; // javascript
   obj.OnScriptError := eh.ScriptError;
+  obj.UseOldEngine := USEOLDASPARSER;
   if Lang <> emptystr then
-    obj.asw.scriptlanguage := Lang;
-  eh.scriptlanguage := obj.asw.scriptlanguage;
-  obj.asw.UseSafeSubset := false;
-  obj.asw.AddNamedItem(rudLibName, uconsole);
+    obj.scriptlanguage := Lang;
+  eh.scriptlanguage := obj.scriptlanguage;
+  obj.UseSafeSubset := false;
+  obj.AddNamedItem(rudLibName, uconsole);
   Script := lua_tostring(L, 1);
   Script := Importer.GetScript(L, Script, langdef).completescript;
   Importer.Free;
@@ -106,7 +123,7 @@ begin
   except
   end;
 
-  if obj.asw_success = false then
+  if obj.scriptsuccess = false then
   begin
     r.success := false;
     r.errormessage := obj.errors.Text;
@@ -114,7 +131,6 @@ begin
   end;
   obj.Free;
   eh.Free;
-  CoUninitialize;
   Und_PushScriptResult(L, r, sw);
   result := 1;
 end;
